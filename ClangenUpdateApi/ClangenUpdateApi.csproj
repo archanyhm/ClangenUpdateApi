@@ -20,12 +20,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Content Include="..\.dockerignore">
-        <Link>.dockerignore</Link>
-      </Content>
-    </ItemGroup>
-
-    <ItemGroup>
       <Folder Include="testdata\development" />
       <Folder Include="testdata\stable" />
     </ItemGroup>
