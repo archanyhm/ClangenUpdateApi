@@ -5,7 +5,7 @@ public class Channel
     public string ChannelName { get; }
     public DirectoryInfo ChannelDirectoryInfo { get; }
     
-    public static readonly string BasePath = "/Users/philippmicke/Projects/Misc/ClangenUpdateApi/ClangenUpdateApi/testdata";
+    public static readonly string BasePath = "./testdata";
     
     public Channel(string channelName)
     {
