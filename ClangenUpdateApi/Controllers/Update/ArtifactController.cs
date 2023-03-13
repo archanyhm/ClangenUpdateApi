@@ -8,8 +8,6 @@ namespace ClangenUpdateApi.Controllers.Update;
 [Route("/Update/Channels/{channelName}/Releases/{releaseName}/Artifacts")]
 public class ArtifactController : ReleaseControllerBase
 {
-    private static string _basePath = "/Users/philippmicke/Projects/Misc/ClangenUpdateApi/ClangenUpdateApi/testdata";
-    
     /// <summary>
     /// Gets a list of artifacts for the specified release in the specified channel.
     /// </summary>

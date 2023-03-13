@@ -6,7 +6,7 @@ namespace ClangenUpdateApi.Controllers.Update;
 [Route("/Update/Channels")]
 public class UpdateController : Controller
 {
-    private static string _basePath = "/Users/philippmicke/Projects/Misc/ClangenUpdateApi/ClangenUpdateApi/testdata";
+    public static readonly string BasePath = "./testdata";
 
     /// <summary>
     /// Gets a list of available update channels -- e.g. "stable" or "development"
@@ -15,7 +15,7 @@ public class UpdateController : Controller
     [HttpGet]
     public IEnumerable<string> GetChannels()
     {
-        var channels = Directory.GetDirectories(_basePath);
+        var channels = Directory.GetDirectories(BasePath);
         var channelNames = channels.Select(name => name.Split("/").Last());
 
         return channelNames;
