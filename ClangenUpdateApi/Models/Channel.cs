@@ -5,7 +5,7 @@ public class Channel
     public string ChannelName { get; }
     public DirectoryInfo ChannelDirectoryInfo { get; }
     
-    public static readonly string BasePath = "./testdata";
+    public static string BasePath => Environment.GetEnvironmentVariable("STORAGE_PATH") ?? "./";
     
     public Channel(string channelName)
     {

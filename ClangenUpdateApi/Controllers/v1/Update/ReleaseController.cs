@@ -1,10 +1,13 @@
+using ClangenUpdateApi.Authentication;
 using ClangenUpdateApi.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace ClangenUpdateApi.Controllers.Update;
+namespace ClangenUpdateApi.Controllers.v1.Update;
 
 [ApiController]
-[Route("/Update/Channels/{channelName}/Releases")]
+[Route("/api/v{version:apiVersion}/Update/Channels/{channelName}/Releases")]
+[ApiVersion("1.0")]
 public class ReleaseController : ReleaseControllerBase
 {
     /// <summary>
@@ -58,7 +61,7 @@ public class ReleaseController : ReleaseControllerBase
     /// <param name="releaseName"></param>
     /// <returns></returns>
     [HttpPost("{releaseName}/Appoint")]
-    [ApiKey]
+    [Authorize(AuthenticationSchemes=ApiKeyAuthenticationDefaults.AuthenticationScheme)]
     public IActionResult AppointRelease(string channelName, string releaseName)
     {
         var channel = new Channel(channelName);
@@ -90,7 +93,7 @@ public class ReleaseController : ReleaseControllerBase
     /// <param name="releaseName"></param>
     /// <returns></returns>
     [HttpPost("{releaseName}/Confirm")]
-    [ApiKey]
+    [Authorize(AuthenticationSchemes=ApiKeyAuthenticationDefaults.AuthenticationScheme)]
     public IActionResult ConfirmRelease(string channelName, string releaseName)
     {
         var channel = new Channel(channelName);

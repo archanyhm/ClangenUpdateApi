@@ -1,11 +1,13 @@
 using System.Net;
+using ClangenUpdateApi.Authentication;
 using ClangenUpdateApi.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace ClangenUpdateApi.Controllers.Update;
+namespace ClangenUpdateApi.Controllers.v1.Update;
 
 [ApiController]
-[Route("/Update/Channels/{channelName}/Releases/{releaseName}/Artifacts")]
+[Route("/api/v{version:apiVersion}/Update/Channels/{channelName}/Releases/{releaseName}/Artifacts")]
 public class ArtifactController : ReleaseControllerBase
 {
     /// <summary>
@@ -39,7 +41,7 @@ public class ArtifactController : ReleaseControllerBase
     [HttpPut("{artifactName}")]
     [DisableRequestSizeLimit]
     [RequestFormLimits(ValueLengthLimit = int.MaxValue, MultipartBodyLengthLimit = int.MaxValue)]
-    [ApiKey]
+    [Authorize(AuthenticationSchemes=ApiKeyAuthenticationDefaults.AuthenticationScheme)]
     public async Task<IActionResult> PutArtifact(string channelName, string releaseName, string artifactName, List<IFormFile> fileBundle)
     {
         var channel = new Channel(channelName);
@@ -126,7 +128,7 @@ public class ArtifactController : ReleaseControllerBase
     /// </summary>
     /// <param name="channelName"></param>
     /// <param name="artifactName"></param>
-    [HttpGet("/Update/Channels/{channelName}/Releases/Latest/Artifacts/{artifactName}")]
+    [HttpGet("/api/v{version:apiVersion}/Update/Channels/{channelName}/Releases/Latest/Artifacts")]
     public async Task<IActionResult> GetLatestReleaseArtifact(string channelName, string artifactName)
     {
         var channel = new Channel(channelName);

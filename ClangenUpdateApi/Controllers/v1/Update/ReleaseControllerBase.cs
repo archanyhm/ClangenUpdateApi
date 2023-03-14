@@ -1,7 +1,7 @@
 using ClangenUpdateApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
-namespace ClangenUpdateApi.Controllers.Update;
+namespace ClangenUpdateApi.Controllers.v1.Update;
 
 public abstract class ReleaseControllerBase : UpdateControllerBase
 {
