@@ -32,4 +32,4 @@ jobs:
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
           namespace: misc
       - name: Deploy
-        run: kubectl rollout restart deployment datecsvexport --namespace misc
+        run: kubectl rollout restart deployment clangen-update-api --namespace clangen
