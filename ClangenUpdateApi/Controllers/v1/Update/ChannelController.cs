@@ -15,8 +15,6 @@ public class UpdateController : UpdateControllerBase
     /// </summary>
     /// <returns></returns>
     [HttpGet]
-    [Authorize(AuthenticationSchemes=ApiKeyAuthenticationDefaults.AuthenticationScheme)]
-
     public IEnumerable<string> GetChannels()
     {
         var channels = Directory.GetDirectories(Channel.BasePath);
