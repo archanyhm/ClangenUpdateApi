@@ -29,7 +29,7 @@ public class ReleaseController : ReleaseControllerBase
             return Ok(new { success = true, releases = Array.Empty<string>() });
         }
 
-        return Ok(new { success = true, releases = confirmedDir.EnumerateDirectories().Select(directory => directory.Name) });
+        return Ok(new { success = true, releases = confirmedDir.EnumerateDirectories().Where(directory => directory.Name != "Latest").Select(directory => directory.Name) });
     }
     
     /// <summary>
