@@ -1,9 +1,7 @@
 name: Docker Image CI
 
-on:
-  release:
-    types: [published]
-  workflow_dispatch:
+only:
+  - master
 
 jobs:
   build:
@@ -24,12 +22,11 @@ jobs:
         with:
           context: ./
           push: true
-          tags: '${{ secrets.REGISTRY_URL }}/clangen/clangen-update-api:latest'
+          tags: '${{ secrets.REGISTRY_URL }}/clangen/clangen-update-api:dev'
       - name: Set Kubernetes context
         uses: Azure/k8s-set-context@v1
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
-          namespace: misc
       - name: Deploy
-        run: kubectl rollout restart deployment clangen-update-api --namespace clangen
+        run: kubectl rollout restart deployment clangen-update-api-staging --namespace clangen

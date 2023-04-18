@@ -1,15 +1,28 @@
 using System.Net;
 using ClangenUpdateApi.Authentication;
-using ClangenUpdateApi.Models;
+using ClangenUpdateApi.Database;
+using ClangenUpdateApi.Database.Entities;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Net.Http.Headers;
+using Npgsql;
+using System;
 
 namespace ClangenUpdateApi.Controllers.v1.Update;
 
 [ApiController]
 [Route("/api/v{version:apiVersion}/Update/Channels/{channelName}/Releases/{releaseName}/Artifacts")]
-public class ArtifactController : ReleaseControllerBase
+public class ArtifactController : Controller
 {
+    public MainContext DbContext { get; set; }
+
+    public ArtifactController(MainContext dbContext)
+    {
+        DbContext = dbContext;
+    }
+    
     /// <summary>
     /// Gets a list of artifacts for the specified release in the specified channel.
     /// </summary>
@@ -18,18 +31,38 @@ public class ArtifactController : ReleaseControllerBase
     [HttpGet]
     public IActionResult GetReleaseArtifacts(string channelName, string releaseName)
     {
-        var channel = new Channel(channelName);
+        var releaseChannel =
+            DbContext.ReleaseChannels
+                .FirstOrDefault(releaseChannel => releaseChannel.Name.ToLower() == channelName.ToLower());
 
-        if (ValidateChannel(channel) is var result && result != null) return result;
-        
-        if (!Directory.Exists($"{channel.ChannelDirectoryInfo.FullName}/Confirmed/{releaseName}"))
+        if (releaseChannel == null)
         {
-            return BadRequest(new { success = false, messages = new[] { $"""No confirmed release with with name "{releaseName}" found.""" } });
+            return NotFound(new { success = false, messages = new[] { $"""No channel with name "{channelName}" found.""" } });        
+        }
+        
+        var release = DbContext
+            .Entry(releaseChannel)
+            .Collection(channel => channel.Releases)
+            .Query()
+            .FirstOrDefault(release => release.VersionNumber.ToLower() == releaseName);
+
+        if (release == null)
+        {
+            return NotFound(new { messages = new[] { $"""No appointed release with the name "{releaseName}" found.""" } });
         }
 
-        return Ok(new { success = true, artifacts = new DirectoryInfo($"{channel.ChannelDirectoryInfo.FullName}/Confirmed/{releaseName}").EnumerateDirectories().Select(directory => directory.Name) });
+        var artifacts = DbContext
+            .Entry(release)
+            .Collection(release => release.Artifacts)
+            .Query()
+            .ToList();
+
+        return Ok(artifacts.Select(artifact => new
+            {ArtifactName = artifact.Name,
+                artifact.FileName,
+                artifact.FileSize}));
     }
-    
+
     /// <summary>
     /// Attaches a list of files to the specified artifact of the specified release in the specified channel.
     /// </summary>
@@ -41,48 +74,81 @@ public class ArtifactController : ReleaseControllerBase
     [HttpPut("{artifactName}")]
     [DisableRequestSizeLimit]
     [RequestFormLimits(ValueLengthLimit = int.MaxValue, MultipartBodyLengthLimit = int.MaxValue)]
-    [Authorize(AuthenticationSchemes=ApiKeyAuthenticationDefaults.AuthenticationScheme)]
-    public async Task<IActionResult> PutArtifact(string channelName, string releaseName, string artifactName, List<IFormFile> fileBundle)
+    [Authorize(AuthenticationSchemes = ApiKeyAuthenticationDefaults.AuthenticationScheme)]
+    public async Task<IActionResult> PutArtifact(string channelName, string releaseName, string artifactName,
+        List<IFormFile> fileBundle)
     {
-        var channel = new Channel(channelName);
+        var releaseChannel =
+            DbContext.ReleaseChannels
+                .FirstOrDefault(releaseChannel => releaseChannel.Name.ToLower() == channelName.ToLower());
 
-        if (ValidateChannel(channel) is var result && result != null) return result;
-        
-        if (fileBundle.Count == 0)
+        if (releaseChannel == null)
         {
-            return BadRequest(new { success = false, messages = new[] { "No files attached" } });
-        }
-
-        if (!fileBundle.Any(file => file.FileName.EndsWith(".sig")))
-        {
-            return BadRequest(new { success = false, messages = new[] { "No signature attached" } });
-        }
-
-        var releasePath = $"{channel.ChannelDirectoryInfo.FullName}/Appointed/{releaseName}";
-
-        if (!Directory.Exists(releasePath))
-        {
-            releasePath = $"{channel.ChannelDirectoryInfo.FullName}/Confirmed/{releaseName}";
+            return NotFound(new { success = false, messages = new[] { $"""No channel with name "{channelName}" found.""" } });        
         }
         
-        var targetPath = $"{releasePath}/{artifactName}";
+        var release = DbContext
+            .Entry(releaseChannel)
+            .Collection(channel => channel.Releases)
+            .Query()
+            .FirstOrDefault(release => release.VersionNumber.ToLower() == releaseName);
 
-        if (Directory.Exists(targetPath))
+        if (release == null)
         {
-            Directory.Delete(targetPath, true);
+            return NotFound(new { messages = new[] { $"""No appointed release with the name "{releaseName}" found.""" } });
         }
-
-        Directory.CreateDirectory(targetPath);
         
-        foreach (var formFile in fileBundle)
-        {
-            await using var stream = new FileStream($"{targetPath}/{formFile.FileName}", FileMode.Create);
-            await formFile.CopyToAsync(stream);
-        }
+        var npgsqlConnection = (NpgsqlConnection) DbContext.Database.GetDbConnection();
+        var manager = new NpgsqlLargeObjectManager(npgsqlConnection);
 
-        return Created($"{channelName}/Releases/{releaseName}/Artifacts/{artifactName}", new { });
+        try
+        {
+            await npgsqlConnection.OpenAsync();
+            
+            var oid = manager.Create();
+            long fileSize = 0;
+            var fileName = "";
+
+            await using (var transaction = await npgsqlConnection.BeginTransactionAsync())
+            {
+                await using (var stream = await manager.OpenReadWriteAsync(oid))
+                {
+                    var releaseBundle = fileBundle.First(file => !file.FileName.EndsWith(".sig"));
+                    fileName = releaseBundle.FileName;
+
+                    await using (var fileReadStream = releaseBundle.OpenReadStream())
+                    {
+                        await fileReadStream.CopyToAsync(stream);
+                        fileSize = releaseBundle.Length;
+                    }
+                }
+            
+                await transaction.CommitAsync();
+            }
+
+            var artifact = new Artifact
+            {
+                Release = release,
+                Name = artifactName,
+                FileName = fileName, 
+                FileOid = oid,
+                GpgSignature = null,
+                FileSize = fileSize,
+                DownloadCount = 0,
+                HasValidSignature = true
+            };
+
+            DbContext.Artifacts.Add(artifact);
+            await DbContext.SaveChangesAsync();
+
+            return Created($"{channelName}/Releases/{releaseName}/Artifacts/{artifactName}", new { });
+        }
+        finally
+        {
+            await npgsqlConnection.CloseAsync();
+        }
     }
-    
+
     /// <summary>
     /// Gets the specified artifact for the specified release in the specified channel
     /// </summary>
@@ -92,27 +158,68 @@ public class ArtifactController : ReleaseControllerBase
     [HttpGet("{artifactName}")]
     public async Task<IActionResult> GetReleaseArtifact(string channelName, string releaseName, string artifactName)
     {
-        var channel = new Channel(channelName);
-        if (ValidateChannel(channel) is var channelResult && channelResult != null) return channelResult;
+        Response.StatusCode = 200;
+        
+        var releaseChannel =
+            DbContext.ReleaseChannels
+                .FirstOrDefault(releaseChannel => releaseChannel.Name.ToLower() == channelName.ToLower());
 
-        var release = new Release(releaseName, channel);
-        if (ValidateRelease(release) is var releaseResult && releaseResult != null) return releaseResult;
+        if (releaseChannel == null)
+        {
+            return NotFound(new { success = false, messages = new[] { $"""No channel with name "{channelName}" found.""" } });        
+        }
+        
+        var release = DbContext
+            .Entry(releaseChannel)
+            .Collection(channel => channel.Releases)
+            .Query()
+            .FirstOrDefault(release => release.VersionNumber.ToLower() == releaseName);
 
-        var artifactInfo = new DirectoryInfo($"{release.ReleaseDirectoryInfo.FullName}/{artifactName}");
+        if (release == null)
+        {
+            return NotFound(new { messages = new[] { $"""No confirmed release with the name "{releaseName}" found.""" } });
+        }
 
-        if (!artifactInfo.Exists)
+        var artifact = DbContext
+            .Entry(release)
+            .Collection(release => release.Artifacts)
+            .Query()
+            .FirstOrDefault(artifact => artifact.Name.ToLower() == artifactName.ToLower());
+
+        if (artifact == null)
         {
             return NotFound(new { success = false, messages = new[] { $"""No artifact with name "{artifactName}" found.""" } });
         }
-
-        var artifactFile = artifactInfo.EnumerateFiles().First(file => file.Extension != "sig");
-        var artifactSignature = artifactInfo.EnumerateFiles().First(file => file.Extension == ".sig");
         
-        Response.Headers.Add("X-GPG-Signature", WebUtility.UrlEncode(await artifactSignature.OpenText().ReadToEndAsync()));
+        var npgsqlConnection = (NpgsqlConnection) DbContext.Database.GetDbConnection();
+        var manager = new NpgsqlLargeObjectManager(npgsqlConnection);
 
-        return File(artifactFile.OpenRead(), "application/octet-stream", artifactFile.Name);
+        try
+        {
+            await npgsqlConnection.OpenAsync();
+            Response.Headers.Add(HeaderNames.ContentDisposition,
+                new ContentDispositionHeaderValue("attachment") {FileName = artifact.FileName}.ToString());
+            Response.Headers.Add(HeaderNames.ContentType, "application/octet-stream");
+            Response.Headers.Add(HeaderNames.ContentLength, $"{artifact.FileSize}");
+
+            await using var transaction = await npgsqlConnection.BeginTransactionAsync();
+            
+            await using (var stream = await manager.OpenReadAsync(artifact.FileOid))
+            {
+                await stream.CopyToAsync(Response.Body);
+                await Response.Body.FlushAsync();
+            }
+
+            await transaction.CommitAsync();
+        }
+        finally
+        {
+            await npgsqlConnection.CloseAsync();
+        }
+
+        return Empty;
     }
-    
+
     /// <summary>
     /// Gets a list of artifacts for the latest release in the specified channel.
     /// </summary>
@@ -120,34 +227,73 @@ public class ArtifactController : ReleaseControllerBase
     // [HttpGet("{channelName}/Latest/Artifacts")]
     // public void GetLatestReleaseArtifacts(string channelName, string releaseName)
     // {
-        
+
     // } 
-    
+
     /// <summary>
     /// Gets the specified artifact for the latest release in the specified channel
     /// </summary>
     /// <param name="channelName"></param>
     /// <param name="artifactName"></param>
-    [HttpGet("/api/v{version:apiVersion}/Update/Channels/{channelName}/Releases/Latest/Artifacts")]
+    [HttpGet("/api/v{version:apiVersion}/Update/Channels/{channelName}/Releases/Latest/Artifact/{artifactName}")]
     public async Task<IActionResult> GetLatestReleaseArtifact(string channelName, string artifactName)
     {
-        var channel = new Channel(channelName);
-        if (ValidateChannel(channel) is var channelResult && channelResult != null) return channelResult;
+        Response.StatusCode = 200;
+        
+        var releaseChannel =
+            DbContext.ReleaseChannels
+                .Include(releaseChannel => releaseChannel.LatestRelease)
+                .FirstOrDefault(releaseChannel => releaseChannel.Name.ToLower() == channelName.ToLower());
 
-        var latestRelease = channel.GetLatestRelease();
+        if (releaseChannel == null)
+        {
+            return NotFound(new { success = false, messages = new[] { $"""No channel with name "{channelName}" found.""" } });        
+        }
 
-        var artifactInfo = new DirectoryInfo($"{latestRelease.ReleaseDirectoryInfo.FullName}/{artifactName}");
+        var release = releaseChannel.LatestRelease;
 
-        if (!artifactInfo.Exists)
+        if (release == null)
+        {
+            return NotFound(new { messages = new[] { $"""No releases for "{releaseChannel.Name}" found.""" } });
+        }
+
+        var artifact = DbContext
+            .Entry(release)
+            .Collection(release => release.Artifacts)
+            .Query()
+            .FirstOrDefault(artifact => artifact.Name.ToLower() == artifactName.ToLower());
+
+        if (artifact == null)
         {
             return NotFound(new { success = false, messages = new[] { $"""No artifact with name "{artifactName}" found.""" } });
         }
-
-        var artifactFile = artifactInfo.EnumerateFiles().First(file => file.Extension != "sig");
-        var artifactSignature = artifactInfo.EnumerateFiles().First(file => file.Extension == ".sig");
         
-        Response.Headers.Add("X-GPG-Signature", WebUtility.UrlEncode(await artifactSignature.OpenText().ReadToEndAsync()));
+        var npgsqlConnection = (NpgsqlConnection) DbContext.Database.GetDbConnection();
+        var manager = new NpgsqlLargeObjectManager(npgsqlConnection);
 
-        return File(artifactFile.OpenRead(), "application/octet-stream", artifactFile.Name);
-    } 
+        try
+        {
+            await npgsqlConnection.OpenAsync();
+            Response.Headers.Add(HeaderNames.ContentDisposition,
+                new ContentDispositionHeaderValue("attachment") {FileName = artifact.FileName}.ToString());
+            Response.Headers.Add(HeaderNames.ContentType, "application/octet-stream");
+            Response.Headers.Add(HeaderNames.ContentLength, $"{artifact.FileSize}");
+
+            await using var transaction = await npgsqlConnection.BeginTransactionAsync();
+            
+            await using (var stream = await manager.OpenReadAsync(artifact.FileOid))
+            {
+                await stream.CopyToAsync(Response.Body);
+                await Response.Body.FlushAsync();
+            }
+
+            await transaction.CommitAsync();
+        }
+        finally
+        {
+            await npgsqlConnection.CloseAsync();
+        }
+
+        return Empty;
+    }
 }

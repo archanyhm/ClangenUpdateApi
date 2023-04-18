@@ -1,6 +1,4 @@
-using ClangenUpdateApi.Authentication;
-using ClangenUpdateApi.Models;
-using Microsoft.AspNetCore.Authorization;
+using ClangenUpdateApi.Database;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ClangenUpdateApi.Controllers.v1.Update;
@@ -8,18 +6,22 @@ namespace ClangenUpdateApi.Controllers.v1.Update;
 [ApiController]
 [Route("/api/v{version:apiVersion}/Update/Channels")]
 [ApiVersion("1.0")]
-public class UpdateController : UpdateControllerBase
+public class UpdateController : Controller
 {
+    public MainContext DbContext { get; set; }
+
+    public UpdateController(MainContext dbContext)
+    {
+        DbContext = dbContext;
+    }
+    
     /// <summary>
     /// Gets a list of available update channels -- e.g. "stable" or "development"
     /// </summary>
     /// <returns></returns>
     [HttpGet]
-    public IEnumerable<string> GetChannels()
+    public IActionResult GetChannels()
     {
-        var channels = Directory.GetDirectories(Channel.BasePath);
-        var channelNames = channels.Select(name => name.Split("/").Last());
-
-        return channelNames;
+        return Ok(DbContext.ReleaseChannels.Select(releaseChannel => releaseChannel.Name));
     }
 }

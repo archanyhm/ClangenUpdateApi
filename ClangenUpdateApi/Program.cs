@@ -1,6 +1,7 @@
 using System.Reflection;
 using ClangenUpdateApi;
 using ClangenUpdateApi.Authentication;
+using ClangenUpdateApi.Database;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Mvc.Versioning;
@@ -9,6 +10,7 @@ using Microsoft.OpenApi.Models;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers().AddNewtonsoftJson();
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddDbContext<MainContext>();
 builder.Services.AddAuthentication(ApiKeyAuthenticationDefaults.AuthenticationScheme)
     .AddApiKey<ApiKeyAuthenticationService>(o =>
     {
