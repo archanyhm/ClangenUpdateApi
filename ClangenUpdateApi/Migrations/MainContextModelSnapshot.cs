@@ -60,6 +60,9 @@ namespace ClangenUpdateApi.Migrations
 
                     b.HasIndex("ReleaseId");
 
+                    b.HasIndex("Name", "ReleaseId")
+                        .IsUnique();
+
                     b.ToTable("Artifacts");
                 });
 

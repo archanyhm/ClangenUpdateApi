@@ -1,11 +1,13 @@
-using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 namespace ClangenUpdateApi.Database.Entities;
 
+[Index(nameof(Name), nameof(ReleaseId), IsUnique = true)]
 public class Artifact
 {
    public int ArtifactId { get; set; } 
+   public int ReleaseId { get; set; }
    public Release Release { get; set; } = null!;
    public string Name { get; set; } = null!;
    public string FileName { get; set; } = null!;

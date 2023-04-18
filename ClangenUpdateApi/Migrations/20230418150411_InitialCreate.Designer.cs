@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ClangenUpdateApi.Migrations
 {
     [DbContext(typeof(MainContext))]
-    [Migration("20230417190715_InitialCreate")]
+    [Migration("20230418150411_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -62,6 +62,9 @@ namespace ClangenUpdateApi.Migrations
                     b.HasKey("ArtifactId");
 
                     b.HasIndex("ReleaseId");
+
+                    b.HasIndex("Name", "ReleaseId")
+                        .IsUnique();
 
                     b.ToTable("Artifacts");
                 });

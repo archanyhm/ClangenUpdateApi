@@ -100,6 +100,12 @@ namespace ClangenUpdateApi.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_Artifacts_Name_ReleaseId",
+                table: "Artifacts",
+                columns: new[] { "Name", "ReleaseId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Artifacts_ReleaseId",
                 table: "Artifacts",
                 column: "ReleaseId");
